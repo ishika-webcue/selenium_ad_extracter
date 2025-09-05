@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Automated Ad Collector</title>
+</head>
+<body>
+    <h2>Automated Ad Collector</h2>
+
+    <label>URL: <input type="text" id="url" placeholder="https://example.com"></label><br><br>
+    <label>Max Pages: <input type="number" id="maxPages" placeholder="Optional"></label><br><br>
+    <label>CSV Filename: <input type="text" id="csvFile" placeholder="Optional"></label><br><br>
+    <label>Headless Mode: <input type="checkbox" id="headless"></label><br><br>
+
+    <button id="runBtn">Run Collector</button>
+
+    <h3>Logs:</h3>
+    <pre id="logs" style="background:#f4f4f4; padding:10px; max-height:300px; overflow:auto;"></pre>
+
+    <script>
+        const runBtn = document.getElementById("runBtn");
+        const logsBox = document.getElementById("logs");
+
+        runBtn.addEventListener("click", async () => {
+            const url = document.getElementById("url").value.trim();
+            const maxPages = document.getElementById("maxPages").value.trim();
+            const csvFile = document.getElementById("csvFile").value.trim();
+            const headless = document.getElementById("headless").checked;
+
+            logsBox.textContent = "Starting collector...\n";
+
+            try {
+                const response = await fetch("/api/run-collector", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ url, maxPages, csvFile, headless })
+                });
+
+                const result = await response.json();
+
+                logsBox.textContent = result.logs || "No logs captured.";
+
+                if (result.success && result.download) {
+                    const a = document.createElement("a");
+                    a.href = result.download;
+                    a.download = csvFile || "ad_data_collection.csv";
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    logsBox.textContent += "\n✅ CSV download started!";
+                }
+            } catch (err) {
+                logsBox.textContent += "\n❌ Fetch error: " + err.message;
+            }
+        });
+    </script>
+</body>
+</html>

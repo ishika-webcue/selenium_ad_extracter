@@ -30,6 +30,7 @@ class AutomatedAdCollector:
         """
         self.wait_timeout = wait_timeout
         self.driver = None
+        self.headless = headless
         
         # Use provided filename or default to a single persistent file
         if csv_filename:
@@ -55,8 +56,10 @@ class AutomatedAdCollector:
     def create_driver(self, headless=False):
         """Create a Chrome driver with proper configuration."""
         chrome_options = Options()
-        if headless:
-            chrome_options.add_argument("--headless")
+        effective_headless = bool(headless or getattr(self, "headless", False))
+        if effective_headless:
+            chrome_options.add_argument("--headless=new")
+            chrome_options.add_argument("--disable-gpu")
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-blink-features=AutomationControlled")
@@ -65,6 +68,8 @@ class AutomatedAdCollector:
         chrome_options.add_argument("--disable-extensions")
         chrome_options.add_argument("--disable-plugins")
         chrome_options.add_argument("--window-size=1920,1080")
+        chrome_options.add_argument("--lang=en-US,en;q=0.9")
+        chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
         
         # Auto-allow notifications and disable popups
         chrome_options.add_argument("--disable-notifications")
@@ -78,7 +83,7 @@ class AutomatedAdCollector:
         prefs = {
             "profile.default_content_setting_values.notifications": 1,  # Allow notifications
             "profile.default_content_setting_values.popups": 0,  # Block popups
-            "profile.default_content_setting_values.geolocation": 2,  # Block location
+            "profile.default_content_setting_values.geolocation": 1,  # Allow location
             "profile.default_content_setting_values.media_stream": 2,  # Block camera/mic
         }
         chrome_options.add_experimental_option("prefs", prefs)
@@ -281,7 +286,14 @@ class AutomatedAdCollector:
             
             # Wait for new content to load
             time.sleep(scroll_delay)
-            
+
+            # Nudge lazy-loaded ad slots to render
+            try:
+                self.driver.execute_script("window.dispatchEvent(new Event('scroll'));")
+            except Exception:
+                pass
+            time.sleep(1.2)
+
             # Handle any popups that might have appeared
             self.handle_popups_and_notifications()
             
@@ -317,7 +329,7 @@ class AutomatedAdCollector:
             )
             
             # Wait for dynamic content
-            time.sleep(5)
+            time.sleep(6)
             
             # Scroll to load all content
             self.scroll_and_load_content()
@@ -740,10 +752,33 @@ class AutomatedAdCollector:
             print("="*60)
             
             # Initialize driver
-            self.driver = self.create_driver()
+            self.driver = self.create_driver(headless=self.headless)
             
             # Load the first page
             print(f"Loading page 1: {start_url}")
+            # Stealth tweaks before navigation
+            try:
+                self.driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+                    "source": """
+                        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                        window.chrome = { runtime: {} };
+                        Object.defineProperty(navigator, 'platform', { get: () => 'Win32' });
+                    """
+                })
+            except Exception:
+                pass
+
+            # Geolocation and timezone overrides
+            try:
+                self.driver.execute_cdp_cmd("Emulation.setGeolocationOverride", {
+                    "latitude": 40.7128,
+                    "longitude": -74.0060,
+                    "accuracy": 100
+                })
+                self.driver.execute_cdp_cmd("Emulation.setTimezoneOverride", {"timezoneId": "America/New_York"})
+            except Exception:
+                pass
+
             self.driver.get(start_url)
             
             # Handle any initial popups or notifications

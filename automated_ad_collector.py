@@ -65,11 +65,200 @@ class AutomatedAdCollector:
         chrome_options.add_argument("--disable-extensions")
         chrome_options.add_argument("--disable-plugins")
         chrome_options.add_argument("--window-size=1920,1080")
+        
+        # Auto-allow notifications and disable popups
+        chrome_options.add_argument("--disable-notifications")
+        chrome_options.add_argument("--disable-popup-blocking")
+        chrome_options.add_argument("--disable-infobars")
+        chrome_options.add_argument("--disable-web-security")
+        chrome_options.add_argument("--allow-running-insecure-content")
+        chrome_options.add_argument("--disable-features=VizDisplayCompositor")
+        
+        # Prefs to auto-allow notifications
+        prefs = {
+            "profile.default_content_setting_values.notifications": 1,  # Allow notifications
+            "profile.default_content_setting_values.popups": 0,  # Block popups
+            "profile.default_content_setting_values.geolocation": 2,  # Block location
+            "profile.default_content_setting_values.media_stream": 2,  # Block camera/mic
+        }
+        chrome_options.add_experimental_option("prefs", prefs)
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
         chrome_options.add_experimental_option('useAutomationExtension', False)
         
         return webdriver.Chrome(options=chrome_options)
     
+    def handle_popups_and_notifications(self):
+        """Handle any popups, notifications, or cookie banners that might appear."""
+        try:
+            # Skip these unwanted elements (social media buttons, etc.)
+            skip_texts = ['Share', 'share', 'Follow', 'follow', 'Like', 'like', 'Comment', 'comment', 'Reply', 'reply', 'Subscribe', 'subscribe']
+            
+            # Only handle actual notification prompts and cookie banners
+            # Look for specific notification-related text patterns
+            notification_patterns = [
+                "wants to",
+                "Show notifications",
+                "Allow notifications",
+                "Block notifications",
+                "Enable notifications",
+                "Receive notifications"
+            ]
+            
+            # Check for actual notification prompts first
+            for pattern in notification_patterns:
+                try:
+                    xpath = f"//*[contains(text(), '{pattern}')]"
+                    elements = self.driver.find_elements(By.XPATH, xpath)
+                    
+                    for element in elements:
+                        try:
+                            # Look for Allow button near this text
+                            parent = element.find_element(By.XPATH, "./ancestor::*[position()<=3]")
+                            allow_buttons = parent.find_elements(By.XPATH, ".//button[contains(text(), 'Allow') or contains(text(), 'allow')]")
+                            
+                            for button in allow_buttons:
+                                if button.is_displayed() and button.is_enabled():
+                                    button_text = button.text or button.get_attribute('aria-label') or ""
+                                    if not any(skip_text in button_text for skip_text in skip_texts):
+                                        print(f"    Clicking notification Allow button: {button_text}")
+                                        button.click()
+                                        time.sleep(1)
+                                        break
+                        except:
+                            continue
+                except:
+                    continue
+            
+            # Fallback to general selectors for other popups
+            notification_selectors = [
+                "button[aria-label*='Allow']",
+                "button[aria-label*='allow']",
+                "button:contains('Allow')",
+                "button:contains('allow')",
+                "button:contains('Accept')",
+                "button:contains('accept')",
+                "button:contains('OK')",
+                "button:contains('ok')",
+                "button:contains('Yes')",
+                "button:contains('yes')",
+                "[data-testid*='allow']",
+                "[data-testid*='accept']",
+                ".notification-allow",
+                ".popup-allow",
+                ".cookie-accept",
+                ".consent-accept"
+            ]
+            
+            for selector in notification_selectors:
+                try:
+                    if ":contains(" in selector:
+                        # Use XPath for text-based selectors
+                        xpath = f"//{selector.split(':')[0]}[contains(text(), '{selector.split('(')[1].split(')')[0]}')]"
+                        elements = self.driver.find_elements(By.XPATH, xpath)
+                    else:
+                        elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                    
+                    for element in elements:
+                        try:
+                            if element.is_displayed() and element.is_enabled():
+                                element_text = element.text or element.get_attribute('aria-label') or ""
+                                
+                                # Skip unwanted elements
+                                if any(skip_text in element_text for skip_text in skip_texts):
+                                    continue
+                                
+                                print(f"    Clicking notification/popup button: {element_text}")
+                                element.click()
+                                time.sleep(1)
+                                break
+                        except:
+                            continue
+                except:
+                    continue
+            
+            # Handle cookie banners
+            cookie_selectors = [
+                "button:contains('Accept All')",
+                "button:contains('Accept all')",
+                "button:contains('Accept Cookies')",
+                "button:contains('I Accept')",
+                "button:contains('Agree')",
+                "button:contains('Continue')",
+                ".cookie-accept-all",
+                ".consent-accept-all",
+                "[data-testid*='cookie-accept']",
+                "[data-testid*='consent-accept']"
+            ]
+            
+            for selector in cookie_selectors:
+                try:
+                    if ":contains(" in selector:
+                        xpath = f"//{selector.split(':')[0]}[contains(text(), '{selector.split('(')[1].split(')')[0]}')]"
+                        elements = self.driver.find_elements(By.XPATH, xpath)
+                    else:
+                        elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                    
+                    for element in elements:
+                        try:
+                            if element.is_displayed() and element.is_enabled():
+                                element_text = element.text or element.get_attribute('aria-label') or ""
+                                
+                                # Skip unwanted elements
+                                if any(skip_text in element_text for skip_text in skip_texts):
+                                    continue
+                                
+                                print(f"    Clicking cookie banner button: {element_text}")
+                                element.click()
+                                time.sleep(1)
+                                break
+                        except:
+                            continue
+                except:
+                    continue
+            
+            # Handle close buttons for any remaining popups
+            close_selectors = [
+                "button[aria-label*='Close']",
+                "button[aria-label*='close']",
+                "button:contains('×')",
+                "button:contains('✕')",
+                "button:contains('Close')",
+                "button:contains('close')",
+                ".close-button",
+                ".popup-close",
+                ".modal-close",
+                "[data-testid*='close']"
+            ]
+            
+            for selector in close_selectors:
+                try:
+                    if ":contains(" in selector:
+                        xpath = f"//{selector.split(':')[0]}[contains(text(), '{selector.split('(')[1].split(')')[0]}')]"
+                        elements = self.driver.find_elements(By.XPATH, xpath)
+                    else:
+                        elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                    
+                    for element in elements:
+                        try:
+                            if element.is_displayed() and element.is_enabled():
+                                element_text = element.text or element.get_attribute('aria-label') or ""
+                                
+                                # Skip unwanted elements
+                                if any(skip_text in element_text for skip_text in skip_texts):
+                                    continue
+                                
+                                print(f"    Clicking close button: {element_text}")
+                                element.click()
+                                time.sleep(1)
+                                break
+                        except:
+                            continue
+                except:
+                    continue
+                    
+        except Exception as e:
+            print(f"    Error handling popups: {e}")
+
     def scroll_and_load_content(self, max_scrolls: int = 10, scroll_delay: int = 3):
         """
         Scroll through the page to load all content and ads.
@@ -80,6 +269,9 @@ class AutomatedAdCollector:
         """
         print(f"  Scrolling through page to load content...")
         
+        # Handle any popups or notifications first
+        self.handle_popups_and_notifications()
+        
         for i in range(max_scrolls):
             # Get current scroll position
             last_height = self.driver.execute_script("return document.body.scrollHeight")
@@ -89,6 +281,9 @@ class AutomatedAdCollector:
             
             # Wait for new content to load
             time.sleep(scroll_delay)
+            
+            # Handle any popups that might have appeared
+            self.handle_popups_and_notifications()
             
             # Check if new content loaded
             new_height = self.driver.execute_script("return document.body.scrollHeight")
@@ -102,6 +297,8 @@ class AutomatedAdCollector:
                 for j in range(3):
                     self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
                     time.sleep(2)
+                    # Handle popups during additional scrolls
+                    self.handle_popups_and_notifications()
                 break
         
         # Scroll back to top
@@ -549,6 +746,12 @@ class AutomatedAdCollector:
             print(f"Loading page 1: {start_url}")
             self.driver.get(start_url)
             
+            # Handle any initial popups or notifications
+            print("  Handling initial popups and notifications...")
+            self.handle_popups_and_notifications()
+            time.sleep(3)  # Wait for any popups to appear
+            self.handle_popups_and_notifications()
+            
             while True:
                 print(f"\n--- PROCESSING PAGE {self.current_page} ---")
                 
@@ -571,6 +774,8 @@ class AutomatedAdCollector:
                 if self.go_to_next_page():
                     # Wait for new page to load
                     time.sleep(5)
+                    # Handle any popups on the new page
+                    self.handle_popups_and_notifications()
                     self.current_page += 1
                 else:
                     print(f"  No more pages available. Stopping at page {self.current_page}")
